@@ -1,9 +1,108 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import numpy as np
 import pandas as pd
 
 from .filters import NodeFilter, EdgeFilter
+
+
+def _missing_columns(df: pd.DataFrame, columns: [str]) -> [str]:
+    """
+    Check missing columns in hit_pairs.
+
+    :param df: DataFrame to be test.
+    :param columns: Required columns.
+    :return: List of missing columns.
+    """
+    return pd.Index(columns).difference(
+        df.columns
+    ).tolist()
+
+
+def _compute_default_hit_parameters(hits: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute parameters of each hits.
+
+    By default, This will compute:
+        'r', 'phi', 'theta', 'eta'
+
+    For additional parameters, you can compute in filters if needed.
+
+    :param hits: Hits data frame.
+
+    :return: A hit data frame join with parameters.
+    """
+    missing_columns = _missing_columns(hits, [
+        'r', 'phi', 'theta', 'eta'
+    ])
+    if len(missing_columns) == 0:
+        return hits
+
+    z = hits['z']
+    r = np.sqrt(hits['x'] ** 2 + hits['y'] ** 2)
+    theta = np.arctan2(r, z)
+    phi = np.arctan2(hits['x'], hits['y'])
+    # Pseudorapidity
+    eta = -np.log(np.tan(theta / 2))
+
+    return hits.assign(
+        r=r,
+        phi=phi,
+        theta=theta,
+        eta=eta
+    )
+
+
+def _compute_default_hit_pair_parameters(hit_pairs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute parameters of each hit pairs.
+
+    By default, This will compute:
+        'dr', 'dphi', 'dz', 'dtheta', 'deta',
+        'dR', 'z0', 'phi_slope'
+
+    For additional parameters, you can compute in filters if needed.
+
+    :param hit_pairs: Hits data frame.
+
+    :return: A hit pair data frame join with pair parameters.
+    """
+
+    missing_columns = _missing_columns(hit_pairs, [
+        'dr', 'dphi', 'dz', 'dtheta', 'deta', 'dR', 'z0', 'phi_slope'
+    ])
+    if len(missing_columns) == 0:
+        return hit_pairs
+
+    dr = hit_pairs['r_2'] - hit_pairs['r_1']
+
+    # In range [-pi, pi]
+    dtheta = hit_pairs['theta_2'] - hit_pairs['theta_1']
+    dtheta[dtheta > np.pi] -= 2 * np.pi
+    dtheta[dtheta < -np.pi] += 2 * np.pi
+
+    # In range [-pi, pi]
+    dphi = hit_pairs['phi_2'] - hit_pairs['phi_1']
+    dphi[dphi > np.pi] -= 2 * np.pi
+    dphi[dphi < -np.pi] += 2 * np.pi
+
+    dz = np.abs(hit_pairs['z_2'] - hit_pairs['z_1'])
+    deta = np.abs(hit_pairs['eta_2'] - hit_pairs['eta_1'])
+    dR = np.sqrt(deta ** 2 + dphi ** 2)
+    z0 = hit_pairs['z_1'] - hit_pairs['r_1'] * dz / dr
+    phi_slope = dphi / dr
+
+    return hit_pairs.assign(
+        dr=dr,
+        dphi=dphi,
+        dz=dz,
+        dtheta=dtheta,
+        deta=deta,
+        dR=dR,
+        z0=z0,
+        phi_slope=phi_slope
+    )
 
 
 def _apply_node_filters(hits: pd.DataFrame, filters: [NodeFilter] = None):
@@ -88,6 +187,7 @@ def pair(
     :return: A dictionary contain pairing result.
     Keys are (Start layer ID, End layer ID) and values are Dataframe contains necessary parameters.
     """
+    hits = _compute_default_hit_parameters(hits)
     hits = _apply_node_filters(hits, node_filters)
 
     # Group hits with layer.
@@ -120,6 +220,7 @@ def pair(
             suffixes=('_1', '_2')
         )
 
+        hit_pairs = _compute_default_hit_pair_parameters(hit_pairs)
         hit_pairs = _apply_edge_filters(hit_pairs, edge_filters)
 
         edge_dfs[layer1_id, layer2_id] = hit_pairs

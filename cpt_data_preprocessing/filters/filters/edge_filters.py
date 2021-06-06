@@ -2,19 +2,9 @@
 # -*- coding: utf-8 -*-
 
 import pandas as pd
+import sklearn.cluster
 
-from .edge_filter import EdgeFilter
-from .node_filter import NodeFilter
-
-# HEP.TrkX min Pt[GeV] to (phi_slope, z0[mm]).
-_pt_min = {
-    2.00: (6e-4, 100),
-    1.50: (6e-4, 100),
-    1.00: (6e-4, 100),
-    0.75: (7.63e-4, 100),
-    0.60: (7.63e-4, 100),
-    0.50: (7.63e-4, 100),
-}
+from ..edge_filter import EdgeFilter
 
 
 class TransverseMomentumFilter(EdgeFilter):
@@ -24,12 +14,22 @@ class TransverseMomentumFilter(EdgeFilter):
     Transverse momentum can be estimate by phi_slope and z0.
     We adapt HEP.TrkX approximation.
     """
+    # HEP.TrkX+ min Pt[GeV] to (phi_slope, z0[mm]).
+    _pt_min = {
+        2.00: (6e-4, 1500),
+        1.50: (6e-4, 1500),
+        1.00: (6e-4, 1500),
+        0.75: (7.63e-4, 2500),
+        0.60: (7.63e-4, 2950),
+        0.50: (7.63e-4, 2950),
+    }
+
     def __init__(self, pt_min: float = 2.0):
-        if pt_min in _pt_min:
-            self.phi_slope, self.z0 = _pt_min[pt_min]
+        if pt_min in self._pt_min:
+            self.phi_slope, self.z0 = self._pt_min[pt_min]
         else:
             raise ValueError(
-                f"Value not support. Supported values : {_pt_min.keys()}"
+                f"Value not support. Supported values : {self._pt_min.keys()}"
             )
 
     def filter_pairs(self, hit_pairs: pd.DataFrame) -> pd.DataFrame:
@@ -47,10 +47,14 @@ class DistanceFilter(EdgeFilter):
     Hence this filter include here is just for rough estimation and visualization.
     """
     def __init__(self, distance: float = 100):
-        self.distance = distance
+        self.distance_squared = distance**2
 
     def filter_pairs(self, hit_pairs) -> pd.DataFrame:
-        condition = hit_pairs['drho'] <= self.distance
+        d2 = (hit_pairs['x_2'] - hit_pairs['x_1']) ** 2 + \
+             (hit_pairs['y_2'] - hit_pairs['y_1']) ** 2 + \
+             (hit_pairs['z_2'] - hit_pairs['z_1']) ** 2
+
+        condition = (d2 <= self.distance_squared)
 
         return hit_pairs[condition]
 
@@ -98,9 +102,10 @@ class RealEdgeFilter(EdgeFilter):
             hit_pairs=hit_pairs
         )
 
-        if self.columns_exist(hit_pairs, [
+        missing_columns = self.missing_columns(hit_pairs, [
             'particle_id_1', 'particle_id_2'
-        ]):
+        ])
+        if len(missing_columns) == 0:
             return hit_pairs
 
         particles = self.real_tracks.rename(
@@ -144,52 +149,22 @@ class RealEdgeFilter(EdgeFilter):
         return hit_pairs[condition]
 
 
-class NoiseFilter(NodeFilter):
-    def filter_hits(self, hits) -> pd.DataFrame:
-        # TODO: Implement noise filter.
-        return hits
-
-
-class SameLayerFilter(NodeFilter):
-    def filter_hits(self, hits) -> pd.DataFrame:
-        # TODO: Implement same layer filter.
-        return hits
-
-
-class RealNodeFilter(NodeFilter):
+class ClusterEdgeFilter(EdgeFilter):
     """
-    A filter reserve numbers of hits by truth label.
+    Filter edges connect hit come from different group.
 
-    This filter is use to generate truth label.
+    Group ID need to be calculated and append to hits before apply this filter.
+
+    For example, use DBSCANFilter will remove noise and generate group ID named "group_DBSCAN",
+    hence you initialize this filter with group="group_DBSCAN" to filter edges by DBSCAN group.
     """
-    def __init__(self, real_tracks, particles, n_particles: int = 500):
-        """
-        :param real_tracks: A dataframe of truth label that maps hit to particle ID.
-        :param particles: A dataframe contains parameters of each particle. Use to select particles.
-        """
-        self.real_tracks = real_tracks
-        # Select particles.
-        self.particle_ids = particles['particle_id'].unique()[-n_particles:]
-        # Compute accepted hit IDs.
-        self.hit_ids = real_tracks[
-            real_tracks['particle_id'].isin(self.particle_ids)
-        ]['hit_id'].to_numpy()
+    def __init__(self, group):
+        self.group = group
 
-    def filter_hits(self, hits) -> pd.DataFrame:
-        missing_columns = self.real_tracks.columns.difference(
-            hits.columns
-        ).tolist()
-        particles = self.real_tracks[
-            ['hit_id'] + missing_columns
-        ]
-        hits = pd.merge(
-            hits,
-            particles,
-            on='hit_id',
-            how='inner'
-        )
+    def filter_pairs(self, hit_pairs) -> pd.DataFrame:
+        column1 = self.group + '_1'
+        column2 = self.group + '_2'
 
-        condition = (hits['particle_id'] != 0) & (hits['particle_id'].isin(self.particle_ids))
-        hits = hits[condition]
+        condition = (hit_pairs[column1] == hit_pairs[column2])
 
-        return hits
+        return hit_pairs[condition]

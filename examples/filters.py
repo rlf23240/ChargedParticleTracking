@@ -27,11 +27,22 @@ if __name__ == '__main__':
         start_layers=[2, 4, 6],
         end_layers=[4, 6, 8],
         node_filters=[
+            # filters.RealNodeFilter(
+            #    real_tracks=truth_labels,
+            #    particles=particles
+            # ),
+            # Not implement yet.
             filters.NoiseFilter(),
-            filters.SameLayerFilter()
+            # Not implement yet.
+            filters.SameLayerFilter(),
+            filters.DBSCANFilter(
+                eps=0.05,
+                min_pts=20
+            ),
         ],
         edge_filters=[
-            filters.TransverseMomentumFilter(pt_min=2.0)
+            filters.TransverseMomentumFilter(pt_min=0.5),
+            filters.ClusterEdgeFilter(group='group_DBSCAN'),
         ]
     )
 

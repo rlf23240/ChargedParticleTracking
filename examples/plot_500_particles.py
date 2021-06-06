@@ -51,9 +51,9 @@ if __name__ == '__main__':
         ],
         edge_filters=[
             # No physical reason. Just for visualization.
-            filters.DistanceFilter(distance=100),
-            # For more accurate filter, see TransverseMomentumFilter.
-            # filters.TransverseMomentumFilter(pt_min=2.0),
+            # filters.DistanceFilter(distance=100),
+            # For more accurate filter, use TransverseMomentumFilter.
+            filters.TransverseMomentumFilter(pt_min=2.0),
         ]
     )
 
