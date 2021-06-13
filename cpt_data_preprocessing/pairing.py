@@ -184,8 +184,9 @@ def pair(
     :param node_filters: Node filters to remove unwanted nodes.
     :param edge_filters: Edge filters to remove unwanted edges.
 
-    :return: A dictionary contain pairing result.
-    Keys are (Start layer ID, End layer ID) and values are Dataframe contains necessary parameters.
+    :return:
+    Filtered hits dataframe and a dictionary contain pairing result.
+    Dictionary keys are (Start layer ID, End layer ID) and values are Dataframe contains necessary parameters.
     """
     hits = _compute_default_hit_parameters(hits)
     hits = _apply_node_filters(hits, node_filters)
@@ -225,4 +226,4 @@ def pair(
 
         edge_dfs[layer1_id, layer2_id] = hit_pairs
 
-    return edge_dfs
+    return hits, edge_dfs

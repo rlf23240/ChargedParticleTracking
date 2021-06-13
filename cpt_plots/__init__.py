@@ -9,5 +9,6 @@ from .hit_positions import (
 
 from .hit_pairs import (
     hit_pair_plot_2d,
-    hit_pair_plot_3d
+    hit_pair_plot_3d,
+    hit_pair_gnn_prediction_plot_2d
 )

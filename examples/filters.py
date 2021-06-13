@@ -22,27 +22,32 @@ if __name__ == '__main__':
         volume=volume
     )
 
-    pair_dfs = pair(
+    hits, pair_dfs = pair(
         hits=hits,
         start_layers=[2, 4, 6],
         end_layers=[4, 6, 8],
         node_filters=[
-            # filters.RealNodeFilter(
-            #    real_tracks=truth_labels,
-            #    particles=particles
-            # ),
-            # Not implement yet.
-            filters.NoiseFilter(),
-            # Not implement yet.
-            filters.SameLayerFilter(),
-            filters.DBSCANFilter(
-                eps=0.05,
-                min_pts=20
+            filters.NoiseFilter(
+                real_tracks=truth_labels
             ),
+            filters.SameLayerFilter(
+                real_tracks=truth_labels,
+            ),
+            filters.RealNodeFilter(
+                real_tracks=truth_labels,
+                particles=particles
+            ),
+            # filters.DBSCANFilter(
+            #     eps=0.05,
+            #     min_pts=20
+            # ),
         ],
         edge_filters=[
-            filters.TransverseMomentumFilter(pt_min=0.5),
-            filters.ClusterEdgeFilter(group='group_DBSCAN'),
+            # filters.TransverseMomentumFilter(pt_min=0.5),
+            # filters.ClusterEdgeFilter(group='group_DBSCAN'),
+            filters.RealEdgeFilter(
+                real_tracks=truth_labels,
+            )
         ]
     )
 

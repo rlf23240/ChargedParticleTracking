@@ -32,22 +32,18 @@ if __name__ == '__main__':
     print(particles.columns)
     print(truth_labels.columns)
 
-    # Since number of hits is too large,
-    # we cheat a little bit here by filter out known particles.
-    hits_filtered = filters.RealNodeFilter(
-        n_particles=500,
-        real_tracks=truth_labels,
-        particles=particles
-    ).filter_hits(
-        hits=hits
-    )
-
-    pair_dfs = pair(
-        hits=hits_filtered,
+    hits_filtered, pair_dfs = pair(
+        hits=hits,
         start_layers=[2, 4, 6],
         end_layers=[4, 6, 8],
         node_filters=[
-            # RealNodeFilter already applied.
+            # Since number of hits is too large,
+            # we cheat a little bit here by filter out known particles.
+            filters.RealNodeFilter(
+                n_particles=500,
+                real_tracks=truth_labels,
+                particles=particles
+            )
         ],
         edge_filters=[
             # No physical reason. Just for visualization.
@@ -57,12 +53,18 @@ if __name__ == '__main__':
         ]
     )
 
-    real_track_dfs = pair(
+    hits_filtered, real_track_dfs = pair(
         hits=hits_filtered,
         start_layers=[2, 4, 6],
         end_layers=[4, 6, 8],
         node_filters=[
-            # RealNodeFilter already applied.
+            # Since number of hits is too large,
+            # we cheat a little bit here by filter out known particles.
+            filters.RealNodeFilter(
+                n_particles=500,
+                real_tracks=truth_labels,
+                particles=particles
+            )
         ],
         edge_filters=[
             filters.RealEdgeFilter(

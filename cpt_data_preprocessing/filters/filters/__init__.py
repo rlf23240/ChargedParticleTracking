@@ -6,6 +6,7 @@ from .edge_filters import (
     DistanceFilter,
     ClusterEdgeFilter,
     MLFilter,
+    RealEdgeLabeler,
     RealEdgeFilter
 )
 

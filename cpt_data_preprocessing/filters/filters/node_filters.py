@@ -9,20 +9,66 @@ from ..node_filter import NodeFilter
 
 
 class NoiseFilter(NodeFilter):
+    """
+    Remove noise base on real track.
+    """
+    def __init__(self, real_tracks):
+        self.real_tracks = real_tracks
+
     def filter_hits(self, hits) -> pd.DataFrame:
-        # TODO: Implement noise filter.
+        missing_columns = self.real_tracks.columns.difference(
+            hits.columns
+        ).tolist()
+        particles = self.real_tracks[
+            ['hit_id'] + missing_columns
+        ]
+        hits = pd.merge(
+            hits,
+            particles,
+            on='hit_id',
+            how='inner'
+        )
+
+        condition = (hits['particle_id'] != 0) | (hits['weight'] != 0)
+        hits = hits[condition]
+
         return hits
 
 
 class SameLayerFilter(NodeFilter):
+    """
+    Remove duplicated hits base on real track.
+    """
+    def __init__(self, real_tracks):
+        self.real_tracks = real_tracks
+
     def filter_hits(self, hits) -> pd.DataFrame:
-        # TODO: Implement same layer filter.
+        missing_columns = self.real_tracks.columns.difference(
+            hits.columns
+        ).tolist()
+        particles = self.real_tracks[
+            ['hit_id'] + missing_columns
+        ]
+        hits = pd.merge(
+            hits,
+            particles,
+            on='hit_id',
+            how='inner'
+        )
+
+        hits = hits.loc[
+            hits.groupby(
+                ['particle_id', 'layer_id'],
+                as_index=False
+            ).r.idxmin()['r']
+        ]
+
         return hits
 
 
 class RealNodeFilter(NodeFilter):
     """
-    A filter reserve numbers of hits by truth label.
+    A filter reserve hits by numbers of particles base on truth label.
 
     This filter is use to generate truth label.
     """
@@ -30,10 +76,13 @@ class RealNodeFilter(NodeFilter):
         """
         :param real_tracks: A dataframe of truth label that maps hit to particle ID.
         :param particles: A dataframe contains parameters of each particle. Use to select particles.
+        :param n_particles: Number of particles will be reserved. -1 for unlimited particles.
         """
         self.real_tracks = real_tracks
         # Select particles.
-        self.particle_ids = particles['particle_id'].unique()[-n_particles:]
+        self.particle_ids = particles['particle_id'].unique()
+        if n_particles > 0:
+            self.particle_ids = self.particle_ids[-n_particles:]
         # Compute accepted hit IDs.
         self.hit_ids = real_tracks[
             real_tracks['particle_id'].isin(self.particle_ids)
@@ -53,7 +102,8 @@ class RealNodeFilter(NodeFilter):
             how='inner'
         )
 
-        condition = (hits['particle_id'] != 0) & (hits['particle_id'].isin(self.particle_ids))
+        condition = ((hits['particle_id'] != 0) | (hits['weight'] != 0)) \
+            & (hits['particle_id'].isin(self.particle_ids))
         hits = hits[condition]
 
         return hits

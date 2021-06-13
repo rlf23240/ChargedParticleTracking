@@ -85,9 +85,9 @@ class MLFilter(EdgeFilter):
         return hit_pairs[condition]
 
 
-class RealEdgeFilter(EdgeFilter):
+class RealEdgeLabeler(EdgeFilter):
     """
-    A filter remove all edge except real track.
+    A filter do nothing but create truth label on columns.
 
     This filter is use to generate truth label.
     """
@@ -102,8 +102,12 @@ class RealEdgeFilter(EdgeFilter):
             hit_pairs=hit_pairs
         )
 
+        # If truth is already labeled.
+        if 'truth' in hit_pairs.columns:
+            return hit_pairs
+
         missing_columns = self.missing_columns(hit_pairs, [
-            'particle_id_1', 'particle_id_2'
+            'particle_id_1', 'particle_id_2', 'truth'
         ])
         if len(missing_columns) == 0:
             return hit_pairs
@@ -115,9 +119,7 @@ class RealEdgeFilter(EdgeFilter):
         missing_columns = particles.columns.difference(
             hit_pairs.columns
         ).tolist()
-        particles = particles[
-            ['hit_id_1'] + missing_columns
-        ]
+        particles = particles[['hit_id_1', *missing_columns]]
         hit_pairs = pd.merge(
             hit_pairs,
             particles,
@@ -131,20 +133,36 @@ class RealEdgeFilter(EdgeFilter):
         missing_columns = particles.columns.difference(
             hit_pairs.columns
         ).tolist()
-        particles = particles[
-            ['hit_id_2'] + missing_columns
-        ]
+        particles = particles[['hit_id_2', *missing_columns]]
         hit_pairs = pd.merge(
             hit_pairs,
             particles,
             on='hit_id_2'
         )
 
-        return hit_pairs
+        # Remove noise.
+        truth_label = (hit_pairs["particle_id_1"] != 0) & \
+                      (hit_pairs["weight_1"] != 0) & \
+                      (hit_pairs["weight_2"] != 0)
+        # Check particle id.
+        truth_label = truth_label & (hit_pairs["particle_id_1"] == hit_pairs["particle_id_2"])
+
+        return hit_pairs.assign(
+            truth=truth_label
+        )
 
     def filter_pairs(self, hit_pairs) -> pd.DataFrame:
-        condition = (hit_pairs["particle_id_1"] == hit_pairs["particle_id_2"]) \
-            & (hit_pairs["particle_id_1"] != 0)
+        return hit_pairs
+
+
+class RealEdgeFilter(RealEdgeLabeler):
+    """
+    A filter remove all edge except real track.
+
+    This filter is use to generate truth label.
+    """
+    def filter_pairs(self, hit_pairs) -> pd.DataFrame:
+        condition = hit_pairs['truth']
 
         return hit_pairs[condition]
 
