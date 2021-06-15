@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import random
 from pathlib import Path
 
 import numpy as np
@@ -13,126 +14,110 @@ import torch.nn.functional as functional
 import cpt_data_reader
 from cpt_data_preprocessing import pair, filters
 from cpt_data_preprocessing import HitGraph
-from cpt_data_preprocessing import HitGraphDataset, HitGraphDataLoader
+from cpt_data_preprocessing import HitGraphDataset, HitGraphGeneratorDataset, HitGraphDataLoader
 from cpt_plots import hit_pair_gnn_prediction_plot_2d
 from cpt_gnn import SegmentClassifier, Trainer
 
 
-def train_model(save: Path = None) -> nn.Module:
+def split(array: list, ratio: float):
+    """
+    Split array into two parts base on ratio.
+    Mostly use on train test data split.
+
+    :param array: Array to split.
+    :param ratio: Ratio of length between 2 output array.
+    :return: Two split array.
+    """
+    random.shuffle(array)
+
+    if ratio > 1.0:
+        return array, []
+    if ratio < 0.0:
+        return [], array
+
+    count = int(len(array)*ratio)
+
+    return array[:count], array[count:]
+
+
+def train_model(model: nn.Module, save: Path = None) -> Trainer:
     """
     Train a GNN model.
 
     :param: save: Path to save model. None if no need to save.
-    :return: Trained model.
+    :return: Trainer contains a trained model.
     """
     # Prepare data.
-    dataset = '../data/train_10evts/train_10evts/'
+    dataset = Path('output/pairs/100evts_volume8')
     volume = 8
+
+    # events = range(1000, 1100)
     events = [
-        1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009
+        1001, 1020, 1033, 1039, 1044, 1035, 1057, 1062, 1067, 1082,
     ]
 
-    pd.set_option('display.max_columns', None)
-
-    graphs = []
-    for event in events:
-        hits, particles, truth_labels = cpt_data_reader.read(
-            dataset=dataset,
-            event=event,
-            volume=volume
-        )
-
-        # Pair hits to form edges.
-        hits, pair_dfs = pair(
-            hits=hits,
-            start_layers=[2, 4, 6],
-            end_layers=[4, 6, 8],
-            node_filters=[
-                filters.DBSCANFilter(
-                    eps=0.05,
-                    min_pts=20
-                ),
-            ],
-            edge_filters=[
-                filters.TransverseMomentumFilter(pt_min=0.5),
-                filters.ClusterEdgeFilter(group='group_DBSCAN'),
-                filters.RealEdgeLabeler(real_tracks=truth_labels)
-            ]
-        )
-
-        # Concat all hit pairs to ignore layers.
-        pairs = pd.concat(pair_dfs.values())
-
-        graphs.append(HitGraph(hits, pairs, ['eta', 'phi']))
+    train_events, test_events = split(events, 0.67)
 
     # Form dataset.
-    data_loader = HitGraphDataLoader(
-        dataset=HitGraphDataset(graphs)
+    train_data_loader = HitGraphDataLoader(
+        dataset=HitGraphGeneratorDataset(
+            hit_files=[dataset/f'event{event:09}-hits.csv' for event in train_events],
+            pair_files=[dataset/f'event{event:09}-pairs.csv' for event in train_events],
+            node_features=['x', 'y', 'z']
+        )
     )
-
-    # Create model.
-    model = SegmentClassifier()
+    test_data_loader = HitGraphDataLoader(
+        dataset=HitGraphGeneratorDataset(
+            hit_files=[dataset/f'event{event:09}-hits.csv' for event in test_events],
+            pair_files=[dataset/f'event{event:09}-pairs.csv' for event in test_events],
+            node_features=['x', 'y', 'z']
+        )
+    )
 
     # Train model.
     trainer = Trainer(
         model=model,
         loss=functional.binary_cross_entropy,
         optimizer=optimizers.Adam(
-            model.parameters()
+            model.parameters(),
+            lr=0.005
         ),
         save=save
     )
     trainer.train(
-        train_data=data_loader,
-        epochs=1
+        train_data=train_data_loader,
+        valid_data=test_data_loader,
+        epochs=5
     )
-    torch.save(model, 'output/models/10evts_1epochs')
 
-    return model
+    return trainer
 
 
 def validate(model: nn.Module, save: Path = None):
     """
     Validate model by use a single event.
 
-    :param model: A model to be validate.
+    :param model: Model to be validate.
     :param save: Path to save plots. None if no need to save.
     :return:
     """
-    dataset = '../data/train_10evts/train_10evts/'
+    dataset = Path('output/pairs/100evts_volume8/')
     volume = 8
+    event = 1001
 
-    hits, particles, truth_labels = cpt_data_reader.read(
-        dataset=dataset,
-        event=1000,
-        volume=volume
-    )
+    hits = pd.read_csv(dataset / f'event{event:09}-hits.csv')
+    pairs = pd.read_csv(dataset / f'event{event:09}-pairs.csv')
 
-    # Pair hits to form edges.
-    hits, pair_dfs = pair(
+    graph = HitGraph(
         hits=hits,
-        start_layers=[2, 4, 6],
-        end_layers=[4, 6, 8],
-        node_filters=[
-            filters.DBSCANFilter(
-                eps=0.05,
-                min_pts=20
-            ),
-        ],
-        edge_filters=[
-            filters.TransverseMomentumFilter(pt_min=0.5),
-            filters.ClusterEdgeFilter(group='group_DBSCAN'),
-            filters.RealEdgeLabeler(real_tracks=truth_labels)
-        ]
+        pairs=pairs,
+        node_features=['x', 'y', 'z'],
     )
-
-    # Concat all hit pairs to ignore layers.
-    pairs = pd.concat(pair_dfs.values())
-
-    hit_graph = HitGraph(hits, pairs, ['eta', 'phi'])
 
     data_loader = HitGraphDataLoader(
-        HitGraphDataset([hit_graph])
+        dataset=HitGraphDataset(
+            graphs=[graph]
+        )
     )
 
     # Mark model for evaluations.
@@ -143,15 +128,73 @@ def validate(model: nn.Module, save: Path = None):
         # Evaluate model and remove batch dimension
         predictions = model(batch_input).squeeze().detach().numpy()
 
+        save.mkdir(parents=True, exist_ok=True)
+
         hit_pair_gnn_prediction_plot_2d(
             hits=hits,
             pairs=pairs,
             predictions=predictions,
-            truth=hit_graph.truth,
-            save=save
+            truth=graph.truth,
+            threshold=0.35,
+            line_width=0.5,
+            color_scheme=[
+                [0, 1, 0, 1.0],
+                [1, 0, 0, 0.1],
+                [0, 0, 0, 0.0],
+                [1, 1, 0, 0.0]
+            ],
+            save=save / 'true_false_positive.png'
+        )
+
+        hit_pair_gnn_prediction_plot_2d(
+            hits=hits,
+            pairs=pairs,
+            predictions=predictions,
+            truth=graph.truth,
+            threshold=0.35,
+            line_width=0.5,
+            color_scheme=[
+                [0, 1, 0, 0],
+                [1, 0, 0, 0],
+                [0, 0, 0, 0.1],
+                [0, 1, 0, 0]
+            ],
+            save=save / 'true_false_negative.png'
+        )
+
+        hit_pair_gnn_prediction_plot_2d(
+            hits=hits,
+            pairs=pairs,
+            predictions=predictions,
+            truth=graph.truth,
+            threshold=0.35,
+            save=save / 'all.png'
         )
 
 
 if __name__ == '__main__':
-    model = train_model(save=Path('output/models/10evts_1epochs'))
-    validate(model, save=Path('output/plots/gnn/10evts_1epochs.png'))
+    # Create model.
+    model = SegmentClassifier(
+        node_input_dim=3,
+        node_hidden_dim=8,
+        edge_hidden_dim=8,
+        n_iter=3
+    )
+
+    # Train new model.
+    trainer = train_model(
+        model=model,
+        save=Path('output/models/iter3_10evts_5epochs')
+    )
+
+    # Load previous saved model.
+    """model.load_state_dict(
+        torch.load(
+            'output/models/iter3_10evts_5epochs/model'
+        )
+    )"""
+
+    validate(
+        model=model,
+        save=Path('output/plots/gnn/iter3_10evts_5epochs')
+    )

@@ -13,19 +13,20 @@ class EdgeNetwork(nn.Module):
 
     Network is implement with MLP that output [0,1] value.
     """
-    def __init__(self, input_dim, hidden_dim=8, hidden_activation=nn.Tanh):
+    def __init__(self, node_input_dim, hidden_dim):
         super().__init__()
 
+        activation = nn.ReLU
         self.network = nn.Sequential(
-            nn.Linear(input_dim*2, hidden_dim),
+            nn.Linear(node_input_dim*2, hidden_dim),
             nn.LayerNorm(hidden_dim),
-            hidden_activation(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            hidden_activation(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            hidden_activation(),
+            activation(),
+            #nn.Linear(hidden_dim, hidden_dim),
+            #nn.LayerNorm(hidden_dim),
+            #activation(),
+            #nn.Linear(hidden_dim, hidden_dim),
+            #nn.LayerNorm(hidden_dim),
+            #activation(),
             nn.Linear(hidden_dim, 1),
             nn.Sigmoid()
         )
@@ -38,7 +39,7 @@ class EdgeNetwork(nn.Module):
         # Form network input.
         network_input = torch.cat([
             in_node_features,
-            out_node_features
+            out_node_features,
         ], dim=2)
 
         # Apply the network to each edge.

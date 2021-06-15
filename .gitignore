@@ -1,5 +1,7 @@
 # Data
 Data
+# Large output
+examples/output/pairs
 
 # General
 .DS_Store
@@ -7,7 +9,8 @@ Data
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
+
 
 # Thumbnails
 ._*

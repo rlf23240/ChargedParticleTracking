@@ -158,12 +158,13 @@ def _layer_combinations(
     start_layers = start_layers or [2, 4, 6]
     end_layers = end_layers or [4, 6, 8]
 
-    layer_combinations = [
+    """layer_combinations = [
         (layer1, layer2)
         for layer1 in start_layers
         for layer2 in end_layers
         if layer2 > layer1
-    ]
+    ]"""
+    layer_combinations = list(zip(start_layers, end_layers))
 
     return layer_combinations
 

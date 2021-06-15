@@ -82,6 +82,9 @@ def hit_pair_gnn_prediction_plot_2d(
     pairs,
     predictions,
     truth,
+    threshold: float = 0.5,
+    color_scheme: list = None,
+    line_width: float = 0.1,
     save: Path = None
 ):
     fig, ax = plt.subplots(
@@ -107,34 +110,41 @@ def hit_pair_gnn_prediction_plot_2d(
     ]].to_numpy()):
         # FIXIT: truth[edge_idx] is True always return False.
         # Maybe have some operator overriding problem?
-        if (predictions[edge_idx] >= 0.5) and (truth[edge_idx] == True):
+        if (predictions[edge_idx] > threshold) and (truth[edge_idx] > 0.5):
             true_positive.append(
                 ((x1, y1), (x2, y2))
             )
-        elif (predictions[edge_idx] < 0.5) and (truth[edge_idx] == False):
+        elif (predictions[edge_idx] <= threshold) and (truth[edge_idx] <= 0.5):
             true_negative.append(
                 ((x1, y1), (x2, y2))
             )
-        elif (predictions[edge_idx] >= 0.5) and (truth[edge_idx] == False):
+        elif (predictions[edge_idx] > threshold) and (truth[edge_idx] <= 0.5):
             false_positive.append(
                 ((x1, y1), (x2, y2))
             )
-        elif (predictions[edge_idx] < 0.5) and (truth[edge_idx] == True):
+        elif (predictions[edge_idx] <= threshold) and (truth[edge_idx] > 0.5):
             false_negative.append(
                 ((x1, y1), (x2, y2))
             )
 
-    color_scheme = [
-        (true_positive, [0, 1, 0, 1]),
-        (false_positive, [1, 0, 0, 1]),
-        (true_negative, [0, 0, 0, 0.2]),
-        (false_negative, [1, 1, 0, 1]),
+    confusion = [
+        true_positive,
+        false_positive,
+        true_negative,
+        false_negative
     ]
 
-    for lines, color in color_scheme:
+    color_scheme = color_scheme or [
+        [0, 1, 0, 1],
+        [1, 0, 0, 1],
+        [0, 0, 0, 0.1],
+        [1, 1, 0, 1]
+    ]
+
+    for lines, color in zip(confusion, color_scheme):
         line_collection = mc.LineCollection(
             lines,
-            linewidths=0.1,
+            linewidths=line_width,
             color=color
         )
         ax.add_collection(line_collection)

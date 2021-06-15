@@ -14,31 +14,37 @@ class SegmentClassifier(nn.Module):
     Segment classification graph neural network model.
     Consists of an input network, an edge network, and a node network.
     """
-    def __init__(self, input_dim=2, hidden_dim=8, n_iter=3, hidden_activation=nn.Tanh):
+    def __init__(
+        self,
+        node_input_dim,
+        node_hidden_dim=8,
+        edge_hidden_dim=8,
+        n_iter=3
+    ):
         """
-        :param input_dim: Input layer size. Should be same as number of node features.
-        :param hidden_dim: Hidden layer size.
+        :param node_input_dim: Input node feature size.
+        :param edge_input_dim: Input edge feature size.
+        :param node_hidden_dim: Node feature size to embed.
+        :param edge_hidden_dim: Edge feature size to embed.
         :param n_iter: Number of iteration for recursive network.
-        :param hidden_activation: Activation functions for hidden layers.
         """
         super().__init__()
         self.n_iter = n_iter
         # Setup the input network
-        self.input_network = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            hidden_activation()
+        self.node_input_network = nn.Sequential(
+            nn.Linear(node_input_dim, node_hidden_dim),
+            nn.Tanh()
         )
         # Setup the edge network
         self.edge_network = EdgeNetwork(
-            input_dim+hidden_dim,
-            hidden_dim,
-            hidden_activation
+            node_input_dim=node_input_dim+node_hidden_dim,
+            hidden_dim=edge_hidden_dim
         )
         # Setup the node layers
         self.node_network = NodeNetwork(
-            input_dim+hidden_dim,
-            hidden_dim,
-            hidden_activation
+            node_input_dim=node_input_dim+node_hidden_dim,
+            node_output_dim=node_hidden_dim,
+            hidden_dim=node_hidden_dim
         )
 
         print("======Edge Network======")
@@ -53,61 +59,49 @@ class SegmentClassifier(nn.Module):
         """
         # Since graph is variable size input,
         # batching is not support.
-        if len(inputs) > 1:
+        if len(inputs[0]) > 1:
             raise ValueError(
                 "Since graph is variable size input, only batch_size=1 support."
                 "Please check your data."
             )
 
-        nodes, edges = inputs[0]
-
-        # Process nodes and edges.
-        nnodes = len(nodes)
-        nedges = len(edges)
-
-        # Create adjacency matrices that map hits to edges.
-        # A hit mark as 1 if it is start node of an edge in in_node_adj_matrix,
-        # and similarly, a hit mark as 1 if it is end node of an edge out_node_adj_matrix.
-        in_node_adj_matrix = np.zeros(shape=(1, nnodes, nedges), dtype=np.uint8)
-        out_node_adj_matrix = np.zeros(shape=(1, nnodes, nedges), dtype=np.uint8)
-        for edge_idx, (in_node_id, out_node_id) in enumerate(edges):
-            in_node_adj_matrix[:, in_node_id, edge_idx] = 1
-            out_node_adj_matrix[:, out_node_id, edge_idx] = 1
-
-        # Convert to PyTorch Tensor form.
-        nodes = torch.Tensor([nodes])
-        in_node_adj_matrix = torch.Tensor(in_node_adj_matrix)
-        out_node_adj_matrix = torch.Tensor(out_node_adj_matrix)
+        nodes, in_node_adj_matrix, out_node_adj_matrix = inputs
 
         # Use input layers to produce hidden features.
-        hidden_features = self.input_network(nodes)
+        node_hidden_features = self.node_input_network(nodes)
 
-        # Create combined features to perform residual network.
-        combined_features = torch.cat([hidden_features, nodes], dim=-1)
+        # Shortcut connect the input node and edge onto the hidden representation.
+        node_combined_features = torch.cat([
+            node_hidden_features, nodes
+        ], dim=-1)
 
         # Create recursive network.
         for i in range(self.n_iter):
             # Apply edge network
-            edge_wights = self.edge_network(
-                combined_features,
+            edge_weights = self.edge_network(
+                node_combined_features,
                 in_node_adj_matrix,
                 out_node_adj_matrix
             )
 
             # Apply node network
             hidden_features = self.node_network(
-                combined_features,
-                edge_wights,
+                node_combined_features,
+                edge_weights,
                 in_node_adj_matrix,
                 out_node_adj_matrix
             )
 
-            # Create combined features to perform residual network.
-            combined_features = torch.cat([hidden_features, nodes], dim=-1)
+            node_combined_features = (
+                # Residual network.
+                node_combined_features +
+                # Shortcut connect the input node onto the hidden representation.
+                torch.cat([hidden_features, nodes], dim=-1)
+            )
 
         # Apply edge network to get final score.
         return self.edge_network(
-            combined_features,
+            node_combined_features,
             in_node_adj_matrix,
             out_node_adj_matrix
         )

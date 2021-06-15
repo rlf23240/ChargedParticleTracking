@@ -12,21 +12,23 @@ class NodeNetwork(nn.Module):
 
     Network is implement with MLP.
     """
-    def __init__(self, input_dim, output_dim, hidden_activation=nn.Tanh):
+    def __init__(self, node_input_dim, node_output_dim, hidden_dim):
         super().__init__()
+
+        activation = nn.ReLU
         self.network = nn.Sequential(
-            nn.Linear(input_dim*3, output_dim),
-            nn.LayerNorm(output_dim),
-            hidden_activation(),
-            nn.Linear(output_dim, output_dim),
-            nn.LayerNorm(output_dim),
-            hidden_activation(),
-            nn.Linear(output_dim, output_dim),
-            nn.LayerNorm(output_dim),
-            hidden_activation(),
-            nn.Linear(output_dim, output_dim),
-            nn.LayerNorm(output_dim),
-            hidden_activation()
+            nn.Linear(node_input_dim*3, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            activation(),
+            #nn.Linear(hidden_dim, hidden_dim),
+            #nn.LayerNorm(hidden_dim),
+            #activation(),
+            #nn.Linear(hidden_dim, hidden_dim),
+            #nn.LayerNorm(hidden_dim),
+            #activation(),
+            nn.Linear(hidden_dim, node_output_dim),
+            nn.LayerNorm(node_output_dim),
+            activation()
         )
 
     def forward(self, nodes, edge_wights, in_node_adj_matrix, out_node_adj_matrix):
@@ -38,15 +40,15 @@ class NodeNetwork(nn.Module):
         wighted_in_node_adj_matrix = in_node_adj_matrix * edge_wights[:, None]
         wighted_out_node_adj_matrix = out_node_adj_matrix * edge_wights[:, None]
 
-        wighted_in_node_features = torch.bmm(wighted_in_node_adj_matrix, in_node_features)
-        wighted_out_node_features = torch.bmm(wighted_out_node_adj_matrix, out_node_features)
+        wighted_in_node_features = torch.bmm(wighted_in_node_adj_matrix, out_node_features)
+        wighted_out_node_features = torch.bmm(wighted_out_node_adj_matrix, in_node_features)
 
         # Form network input.
         network_input = torch.cat([
-            nodes,
             wighted_in_node_features,
             wighted_out_node_features,
+            nodes
         ], dim=2)
 
         # Apply the network to each node.
-        return self.network(network_input)
+        return self.network(network_input).squeeze(-1)

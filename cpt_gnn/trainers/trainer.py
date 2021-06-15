@@ -36,6 +36,8 @@ class Trainer:
         self.optimizer = optimizer
         self.save = save
 
+        # self.device = 'cpu'
+
     def summary(self):
         """
         Output summary.
@@ -79,19 +81,25 @@ class Trainer:
         # Record train loss.
         train_loss = 0
 
+        # Loss weight.
+        real_weight = 1.0
+        fake_weight = 1.0
+
         # Timing.
         start_time = time()
 
         # Train batches.
         for batch_idx, (batch_input, batch_target) in enumerate(data):
+            print(f"Process batch {batch_idx}...")
+
             # Assign device.
             # batch_input = [a.to(self.device) for a in batch_input]
             # batch_target = batch_target.to(self.device)
 
             # Compute target weights on-the-fly for loss function
-            # batch_weights_real = batch_target
-            # batch_weights_fake = (1 - batch_target)
-            # batch_weights = batch_weights_real + batch_weights_fake
+            batch_weights_real = batch_target * real_weight
+            batch_weights_fake = (1 - batch_target) * fake_weight
+            batch_weights = batch_weights_real + batch_weights_fake
 
             # Reset gradient.
             self.model.zero_grad()
@@ -105,7 +113,7 @@ class Trainer:
             batch_loss = self.loss(
                 batch_output,
                 batch_target,
-                # weight=batch_weights
+                weight=batch_weights
             )
 
             # Backward propagation.
@@ -197,5 +205,5 @@ class Trainer:
                 self.evaluate(valid_data)
 
         if self.save is not None:
-            torch.save(self.model, self.save / 'model')
+            torch.save(self.model.state_dict(), self.save / 'model')
 
