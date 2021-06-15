@@ -94,7 +94,7 @@ def hit_pair_gnn_prediction_plot_2d(
     for layer_id, hits_on_layer in hits.groupby('layer_id'):
         ax.scatter(
             hits_on_layer['x'], hits_on_layer['y'],
-            s=2.0, label=f'Layer {layer_id}', color=[0, 0, 1, 1]
+            s=2.0, color=[0, 0, 1, 1]
         )
 
     # Confusion state.
@@ -127,6 +127,13 @@ def hit_pair_gnn_prediction_plot_2d(
                 ((x1, y1), (x2, y2))
             )
 
+    labels = [
+        'True Positive',
+        'False Positive',
+        'True Negative',
+        'False Negative'
+    ]
+
     confusion = [
         true_positive,
         false_positive,
@@ -141,17 +148,21 @@ def hit_pair_gnn_prediction_plot_2d(
         [1, 1, 0, 1]
     ]
 
-    for lines, color in zip(confusion, color_scheme):
-        line_collection = mc.LineCollection(
-            lines,
-            linewidths=line_width,
-            color=color
-        )
-        ax.add_collection(line_collection)
+    for lines, color, label in zip(confusion, color_scheme, labels):
+        if color[3] > 0:
+            line_collection = mc.LineCollection(
+                lines,
+                linewidths=line_width,
+                color=color,
+                label=label
+            )
+            ax.add_collection(line_collection)
 
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.axis('equal')
+
+    ax.legend()
 
     if save is not None:
         plt.savefig(save)

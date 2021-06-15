@@ -15,7 +15,7 @@ class NodeNetwork(nn.Module):
     def __init__(self, node_input_dim, node_output_dim, hidden_dim):
         super().__init__()
 
-        activation = nn.ReLU
+        activation = nn.Tanh
         self.network = nn.Sequential(
             nn.Linear(node_input_dim*3, hidden_dim),
             nn.LayerNorm(hidden_dim),

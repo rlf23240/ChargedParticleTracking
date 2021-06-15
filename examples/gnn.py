@@ -135,13 +135,13 @@ def validate(model: nn.Module, save: Path = None):
             pairs=pairs,
             predictions=predictions,
             truth=graph.truth,
-            threshold=0.35,
+            threshold=0.4,
             line_width=0.5,
             color_scheme=[
                 [0, 1, 0, 1.0],
                 [1, 0, 0, 0.1],
                 [0, 0, 0, 0.0],
-                [1, 1, 0, 0.0]
+                [0, 0, 0, 0.0]
             ],
             save=save / 'true_false_positive.png'
         )
@@ -151,13 +151,13 @@ def validate(model: nn.Module, save: Path = None):
             pairs=pairs,
             predictions=predictions,
             truth=graph.truth,
-            threshold=0.35,
-            line_width=0.5,
+            threshold=0.4,
+            line_width=0.1,
             color_scheme=[
-                [0, 1, 0, 0],
-                [1, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
                 [0, 0, 0, 0.1],
-                [0, 1, 0, 0]
+                [1, 1, 0, 0.1]
             ],
             save=save / 'true_false_negative.png'
         )
@@ -167,7 +167,7 @@ def validate(model: nn.Module, save: Path = None):
             pairs=pairs,
             predictions=predictions,
             truth=graph.truth,
-            threshold=0.35,
+            threshold=0.4,
             save=save / 'all.png'
         )
 

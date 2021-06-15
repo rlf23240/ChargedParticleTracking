@@ -2,6 +2,8 @@
 Data
 # Large output
 examples/output/pairs
+# Run logs.
+logs
 
 # General
 .DS_Store

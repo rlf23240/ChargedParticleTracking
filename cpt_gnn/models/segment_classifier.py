@@ -23,7 +23,6 @@ class SegmentClassifier(nn.Module):
     ):
         """
         :param node_input_dim: Input node feature size.
-        :param edge_input_dim: Input edge feature size.
         :param node_hidden_dim: Node feature size to embed.
         :param edge_hidden_dim: Edge feature size to embed.
         :param n_iter: Number of iteration for recursive network.
