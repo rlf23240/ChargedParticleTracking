@@ -18,12 +18,14 @@ class Trainer:
     Override **train_epoch** and **evaluate**
     to perform custom training if needed.
     """
-
     def __init__(
         self,
         model: nn.Module,
         loss: Callable,
         optimizer: optimizers.Optimizer,
+        true_sample_train_weight: float = 1.0,
+        false_sample_train_weight: float = 1.0,
+        device: str = 'cpu',
         save: Path = None
     ):
         """
@@ -32,11 +34,26 @@ class Trainer:
         :param optimizer: A PyTorch optimizer instance.
         """
         self.model = model
+
+        # Train device.
+        self.device = device
+
+        # Loss function.
         self.loss = loss
+        self.true_sample_train_weight = true_sample_train_weight
+        self.false_sample_train_weight = false_sample_train_weight
+
+        # Optimizer
         self.optimizer = optimizer
+
+        # Save to disk.
         self.save = save
 
-        # self.device = 'cpu'
+        self.history = {
+            "train_loss": [],
+            "val_loss": [],
+            "val_acc": []
+        }
 
     def summary(self):
         """
@@ -60,7 +77,10 @@ class Trainer:
             )
 
             torch.save(
-                obj={'model': self.model.state_dict()},
+                obj={
+                    'model': self.model.state_dict(),
+                    'history': self.history
+                },
                 f=checkpoint_dir / checkpoint_file
             )
 
@@ -81,10 +101,6 @@ class Trainer:
         # Record train loss.
         train_loss = 0
 
-        # Loss weight.
-        real_weight = 1.0
-        fake_weight = 1.0
-
         # Timing.
         start_time = time()
 
@@ -93,12 +109,12 @@ class Trainer:
             print(f"Process batch {batch_idx}...")
 
             # Assign device.
-            # batch_input = [a.to(self.device) for a in batch_input]
-            # batch_target = batch_target.to(self.device)
+            batch_input = [input_values.to(self.device) for input_values in batch_input]
+            batch_target = batch_target.to(self.device)
 
             # Compute target weights on-the-fly for loss function
-            batch_weights_real = batch_target * real_weight
-            batch_weights_fake = (1 - batch_target) * fake_weight
+            batch_weights_real = batch_target * self.true_sample_train_weight
+            batch_weights_fake = (1 - batch_target) * self.false_sample_train_weight
             batch_weights = batch_weights_real + batch_weights_fake
 
             # Reset gradient.
@@ -132,6 +148,8 @@ class Trainer:
         print(f'Processed {n_batch} batches in {train_time}s')
         print(f'Training loss: {train_loss}')
 
+        self.history['train_loss'].append(train_loss)
+
     @torch.no_grad()
     def evaluate(self, data):
         """
@@ -159,8 +177,8 @@ class Trainer:
         # Loop over batches
         for batch_idx, (batch_input, batch_target) in enumerate(data):
             # Assign to device.
-            # batch_input = [a.to(self.device) for a in batch_input]
-            # batch_target = batch_target.to(self.device)
+            batch_input = [input_values.to(self.device) for input_values in batch_input]
+            batch_target = batch_target.to(self.device)
 
             # Predictions.
             batch_output = self.model(batch_input)
@@ -187,6 +205,9 @@ class Trainer:
             f'Validation loss: {valid_loss} acc: {valid_acc}'
         )
 
+        self.history['val_loss'].append(valid_loss)
+        self.history['val_acc'].append(valid_acc)
+
     def train(self, train_data, epochs, valid_data=None):
         """
         Start training.
@@ -195,8 +216,11 @@ class Trainer:
         :param epochs: Train epochs.
         :param valid_data: Data use for validation.
         """
+        # Push model to training device.
+        self.model.to(self.device)
+
         for epoch in range(epochs):
-            print(f'Epoch {epoch}')
+            print(f'======Epoch {epoch}======')
             # Train one epoch.
             self.train_epoch(train_data)
             self.write_checkpoint(epoch)

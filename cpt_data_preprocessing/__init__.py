@@ -10,4 +10,3 @@ from .pairing import pair
 
 # Form graphs.
 from .graph import HitGraph
-from .graph import HitGraphDataset, HitGraphGeneratorDataset, HitGraphDataLoader

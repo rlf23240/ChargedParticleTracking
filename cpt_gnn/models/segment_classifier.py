@@ -19,7 +19,7 @@ class SegmentClassifier(nn.Module):
         node_input_dim,
         node_hidden_dim=8,
         edge_hidden_dim=8,
-        n_iter=3
+        n_iter=3,
     ):
         """
         :param node_input_dim: Input node feature size.
@@ -28,11 +28,16 @@ class SegmentClassifier(nn.Module):
         :param n_iter: Number of iteration for recursive network.
         """
         super().__init__()
+
         self.n_iter = n_iter
         # Setup the input network
         self.node_input_network = nn.Sequential(
             nn.Linear(node_input_dim, node_hidden_dim),
-            nn.Tanh()
+            nn.Tanh(),
+            nn.Linear(node_hidden_dim, node_hidden_dim),
+            nn.Tanh(),
+            nn.Linear(node_hidden_dim, node_hidden_dim),
+            nn.Tanh(),
         )
         # Setup the edge network
         self.edge_network = EdgeNetwork(
@@ -64,7 +69,7 @@ class SegmentClassifier(nn.Module):
                 "Please check your data."
             )
 
-        nodes, in_node_adj_matrix, out_node_adj_matrix = inputs
+        nodes, edges = inputs
 
         # Use input layers to produce hidden features.
         node_hidden_features = self.node_input_network(nodes)
@@ -76,24 +81,19 @@ class SegmentClassifier(nn.Module):
 
         # Create recursive network.
         for i in range(self.n_iter):
-            # Apply edge network
             edge_weights = self.edge_network(
                 node_combined_features,
-                in_node_adj_matrix,
-                out_node_adj_matrix
+                edges
             )
 
             # Apply node network
             hidden_features = self.node_network(
                 node_combined_features,
-                edge_weights,
-                in_node_adj_matrix,
-                out_node_adj_matrix
+                edges,
+                edge_weights
             )
-
-            node_combined_features = (
-                # Residual network.
-                node_combined_features +
+            # Residual network.
+            node_combined_features += (
                 # Shortcut connect the input node onto the hidden representation.
                 torch.cat([hidden_features, nodes], dim=-1)
             )
@@ -101,6 +101,5 @@ class SegmentClassifier(nn.Module):
         # Apply edge network to get final score.
         return self.edge_network(
             node_combined_features,
-            in_node_adj_matrix,
-            out_node_adj_matrix
+            edges
         )

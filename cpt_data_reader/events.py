@@ -6,9 +6,8 @@ from pathlib import Path
 import pandas as pd
 
 
-def read(dataset, event, volume):
+def read_event(dataset, event, volume):
     """
-
     :param dataset: Name of dataset.
     :param event: Event ID.
     :param volume: Volume filter.

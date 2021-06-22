@@ -20,35 +20,93 @@ class NodeNetwork(nn.Module):
             nn.Linear(node_input_dim*3, hidden_dim),
             nn.LayerNorm(hidden_dim),
             activation(),
-            #nn.Linear(hidden_dim, hidden_dim),
-            #nn.LayerNorm(hidden_dim),
-            #activation(),
-            #nn.Linear(hidden_dim, hidden_dim),
-            #nn.LayerNorm(hidden_dim),
-            #activation(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            activation(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            activation(),
             nn.Linear(hidden_dim, node_output_dim),
             nn.LayerNorm(node_output_dim),
             activation()
         )
 
-    def forward(self, nodes, edge_wights, in_node_adj_matrix, out_node_adj_matrix):
-        # Extract features of in and out node of each edge.
-        in_node_features = torch.bmm(in_node_adj_matrix.transpose(1, 2), nodes)
-        out_node_features = torch.bmm(out_node_adj_matrix.transpose(1, 2), nodes)
+    def forward(self, nodes, edges, edge_weights):
+        # Determine number of batches.
+        n_batch = len(nodes)
 
-        # Weighting by edge weights.
-        wighted_in_node_adj_matrix = in_node_adj_matrix * edge_wights[:, None]
-        wighted_out_node_adj_matrix = out_node_adj_matrix * edge_wights[:, None]
+        # Extract features of in and out node of each edge and weighting by edge weights.
+        edge_weighted_in_node_features = torch.stack([
+            nodes[batch_idx, edges[batch_idx, :, 0], :]
+            for batch_idx in range(n_batch)
+        ]).transpose(1, 2) * edge_weights[:, None]
+        edge_weighted_out_node_features = torch.stack([
+            nodes[batch_idx, edges[batch_idx, :, 1], :]
+            for batch_idx in range(n_batch)
+        ]).transpose(1, 2) * edge_weights[:, None]
 
-        wighted_in_node_features = torch.bmm(wighted_in_node_adj_matrix, out_node_features)
-        wighted_out_node_features = torch.bmm(wighted_out_node_adj_matrix, in_node_features)
+        # Aggregate neighborhood features to node.
+        aggregated_in_node_features, aggregated_out_node_features = self._aggregate(
+            nodes,
+            edges,
+            edge_weighted_in_node_features,
+            edge_weighted_out_node_features
+        )
 
         # Form network input.
         network_input = torch.cat([
-            wighted_in_node_features,
-            wighted_out_node_features,
+            aggregated_in_node_features,
+            aggregated_out_node_features,
             nodes
         ], dim=2)
 
         # Apply the network to each node.
-        return self.network(network_input).squeeze(-1)
+        return self.network(network_input)
+
+    @staticmethod
+    def _aggregate(nodes, edges, in_node_features, out_node_features):
+        n_batch = len(nodes)
+
+        # Aggregate neighborhood features to node.
+        # This should be careful since using tensor for indexing consume additional memory.
+        aggregated_in_node_features = []
+        aggregated_out_node_features = []
+        for batch_idx in range(n_batch):
+            batch_aggregated_in_node_features = []
+            batch_aggregated_out_node_features = []
+            for node_idx in range(len(nodes[batch_idx])):
+                indices = [
+                    edge_idx for edge_idx in range(len(edges))
+                    if edges[batch_idx, edge_idx, 1] == node_idx
+                ]
+                batch_aggregated_in_node_features.append(
+                    torch.sum(in_node_features[
+                        batch_idx, :, indices
+                    ], dim=1)
+                )
+
+                # Handle out node features.
+                indices = [
+                    edge_idx for edge_idx in range(len(edges))
+                    if edges[batch_idx, edge_idx, 0] == node_idx
+                ]
+                batch_aggregated_out_node_features.append(
+                    torch.sum(out_node_features[
+                        batch_idx, :, indices
+                    ], dim=1)
+                )
+
+            aggregated_in_node_features.append(
+                torch.stack(batch_aggregated_in_node_features)
+            )
+            aggregated_out_node_features.append(
+                torch.stack(batch_aggregated_out_node_features)
+            )
+        aggregated_in_node_features = torch.stack(
+            aggregated_in_node_features
+        )
+        aggregated_out_node_features = torch.stack(
+            aggregated_out_node_features
+        )
+
+        return aggregated_in_node_features, aggregated_out_node_features

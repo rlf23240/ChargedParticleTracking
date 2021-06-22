@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     pd.set_option('display.max_columns', None)
 
-    hits, particles, truth_labels = cpt_data_reader.read(
+    hits, particles, truth_labels = cpt_data_reader.read_event(
         dataset=dataset,
         event=event,
         volume=volume

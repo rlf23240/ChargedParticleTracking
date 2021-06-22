@@ -21,25 +21,35 @@ class EdgeNetwork(nn.Module):
             nn.Linear(node_input_dim*2, hidden_dim),
             nn.LayerNorm(hidden_dim),
             activation(),
-            #nn.Linear(hidden_dim, hidden_dim),
-            #nn.LayerNorm(hidden_dim),
-            #activation(),
-            #nn.Linear(hidden_dim, hidden_dim),
-            #nn.LayerNorm(hidden_dim),
-            #activation(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            activation(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            activation(),
             nn.Linear(hidden_dim, 1),
             nn.Sigmoid()
         )
 
-    def forward(self, nodes, in_node_adj_matrix, out_node_adj_matrix):
+    def forward(self, nodes, edges):
         # Extract features of in and out node of each edge.
-        in_node_features = torch.bmm(in_node_adj_matrix.transpose(1, 2), nodes)
-        out_node_features = torch.bmm(out_node_adj_matrix.transpose(1, 2), nodes)
+        # in_node_features = torch.bmm(in_node_adj_matrix.transpose(1, 2), nodes)
+        # out_node_features = torch.bmm(out_node_adj_matrix.transpose(1, 2), nodes)
+        n_batch = len(nodes)
+
+        edge_in_node_features = torch.stack([
+            nodes[batch_idx, edges[batch_idx, :, 0], :]
+            for batch_idx in range(n_batch)
+        ])
+        edge_out_node_features = torch.stack([
+            nodes[batch_idx, edges[batch_idx, :, 1], :]
+            for batch_idx in range(n_batch)
+        ])
 
         # Form network input.
         network_input = torch.cat([
-            in_node_features,
-            out_node_features,
+            edge_in_node_features,
+            edge_out_node_features,
         ], dim=2)
 
         # Apply the network to each edge.

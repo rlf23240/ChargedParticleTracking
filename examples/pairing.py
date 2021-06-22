@@ -21,7 +21,7 @@ if __name__ == '__main__':
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for event in events:
-        hits, particles, truth_labels = cpt_data_reader.read(
+        hits, particles, truth_labels = cpt_data_reader.read_event(
             dataset=dataset,
             event=event,
             volume=volume

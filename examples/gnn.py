@@ -14,7 +14,7 @@ import torch.nn.functional as functional
 import cpt_data_reader
 from cpt_data_preprocessing import pair, filters
 from cpt_data_preprocessing import HitGraph
-from cpt_data_preprocessing import HitGraphDataset, HitGraphGeneratorDataset, HitGraphDataLoader
+from cpt_data_reader import HitGraphDataset, HitGraphGeneratorDataset, HitGraphDataLoader
 from cpt_plots import hit_pair_gnn_prediction_plot_2d
 from cpt_gnn import SegmentClassifier, Trainer
 
@@ -120,13 +120,20 @@ def validate(model: nn.Module, save: Path = None):
         )
     )
 
+    device = 'cpu'
+
+    model.to(device)
+
     # Mark model for evaluations.
     model.eval()
 
     # Use for loop to unpack data. It actually has only one graph.
     for batch_idx, (batch_input, batch_target) in enumerate(data_loader):
+        batch_input = [input_values.to(device) for input_values in batch_input]
+        batch_target = batch_target.to(device)
+
         # Evaluate model and remove batch dimension
-        predictions = model(batch_input).squeeze().detach().numpy()
+        predictions = model(batch_input).squeeze().detach().cpu().numpy()
 
         save.mkdir(parents=True, exist_ok=True)
 
@@ -139,7 +146,7 @@ def validate(model: nn.Module, save: Path = None):
             line_width=0.5,
             color_scheme=[
                 [0, 1, 0, 1.0],
-                [1, 0, 0, 0.1],
+                [1, 0, 0, 1.0],
                 [0, 0, 0, 0.0],
                 [0, 0, 0, 0.0]
             ],
@@ -188,11 +195,11 @@ if __name__ == '__main__':
     )
 
     # Load previous saved model.
-    """model.load_state_dict(
+    model.load_state_dict(
         torch.load(
             'output/models/iter3_10evts_5epochs/model'
         )
-    )"""
+    )
 
     validate(
         model=model,
