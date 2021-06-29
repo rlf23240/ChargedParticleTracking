@@ -1,0 +1,21 @@
+{
+    "iter3_20evts_50epochs_gpu_weighted(0.1)_xyz": {
+        "model": {
+            "node_input_dim": 3,
+            "node_hidden_dim": 64,
+            "edge_hidden_dim": 64,
+            "n_iter": 3
+        },
+        "train": {
+            "features": ["x", "y", "z"],
+            "epoch": 50,
+            "true_sample_train_weight": 1.0,
+            "false_sample_train_weight": 0.1,
+            "device": "cuda"
+        },
+        "validate": {
+            "features": ["x", "y", "z"],
+            "device": "cuda"
+        }
+    }
+}
