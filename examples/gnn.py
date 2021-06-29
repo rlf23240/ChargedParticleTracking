@@ -4,15 +4,12 @@
 import random
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import torch
 import torch.optim as optimizers
 import torch.nn as nn
 import torch.nn.functional as functional
 
-import cpt_data_reader
-from cpt_data_preprocessing import pair, filters
 from cpt_data_preprocessing import HitGraph
 from cpt_data_reader import HitGraphDataset, HitGraphGeneratorDataset, HitGraphDataLoader
 from cpt_plots import hit_pair_gnn_prediction_plot_2d
@@ -40,20 +37,31 @@ def split(array: list, ratio: float):
     return array[:count], array[count:]
 
 
-def train_model(model: nn.Module, save: Path = None) -> Trainer:
+def train_model(
+    model: nn.Module,
+    epoch: int,
+    device: str = 'cpu',
+    true_sample_train_weight: float = 1.0,
+    false_sample_train_weight: float = 1.0,
+    save: Path = None
+) -> Trainer:
     """
     Train a GNN model.
 
+    :param: model: Model to train.
+    :param: epoch: Number of epochs.
+    :param: device: Device use to train.
+    :param: true_sample_train_weight: Train weight for true sample.
+    :param: false_sample_train_weight: Train weight for false sample.
     :param: save: Path to save model. None if no need to save.
     :return: Trainer contains a trained model.
     """
     # Prepare data.
     dataset = Path('output/pairs/100evts_volume8')
-    volume = 8
 
-    # events = range(1000, 1100)
     events = [
         1001, 1020, 1033, 1039, 1044, 1035, 1057, 1062, 1067, 1082,
+        1061, 1091, 1063, 1077, 1047, 1078, 1076, 1018, 1056, 1048
     ]
 
     train_events, test_events = split(events, 0.67)
@@ -63,14 +71,14 @@ def train_model(model: nn.Module, save: Path = None) -> Trainer:
         dataset=HitGraphGeneratorDataset(
             hit_files=[dataset/f'event{event:09}-hits.csv' for event in train_events],
             pair_files=[dataset/f'event{event:09}-pairs.csv' for event in train_events],
-            node_features=['x', 'y', 'z']
+            node_features=['r', 'eta', 'phi']
         )
     )
     test_data_loader = HitGraphDataLoader(
         dataset=HitGraphGeneratorDataset(
             hit_files=[dataset/f'event{event:09}-hits.csv' for event in test_events],
             pair_files=[dataset/f'event{event:09}-pairs.csv' for event in test_events],
-            node_features=['x', 'y', 'z']
+            node_features=['r', 'eta', 'phi']
         )
     )
 
@@ -82,126 +90,192 @@ def train_model(model: nn.Module, save: Path = None) -> Trainer:
             model.parameters(),
             lr=0.005
         ),
+        device=device,
+        true_sample_train_weight=true_sample_train_weight,
+        false_sample_train_weight=false_sample_train_weight,
         save=save
     )
     trainer.train(
         train_data=train_data_loader,
         valid_data=test_data_loader,
-        epochs=5
+        epochs=epoch
     )
 
     return trainer
 
 
-def validate(model: nn.Module, save: Path = None):
+def validate(
+    model: nn.Module,
+    device: str = 'cpu',
+    save: Path = None
+):
     """
     Validate model by use a single event.
 
     :param model: Model to be validate.
+    :param device: Device use for evaluation.
     :param save: Path to save plots. None if no need to save.
     :return:
     """
     dataset = Path('output/pairs/100evts_volume8/')
     volume = 8
-    event = 1001
+    events = [1001, 1020, 1033]
 
-    hits = pd.read_csv(dataset / f'event{event:09}-hits.csv')
-    pairs = pd.read_csv(dataset / f'event{event:09}-pairs.csv')
+    for event in events:
+        hits = pd.read_csv(dataset / f'event{event:09}-hits.csv')
+        pairs = pd.read_csv(dataset / f'event{event:09}-pairs.csv')
 
-    graph = HitGraph(
-        hits=hits,
-        pairs=pairs,
-        node_features=['x', 'y', 'z'],
+        graph = HitGraph(
+            hits=hits,
+            pairs=pairs,
+            node_features=['r', 'eta', 'phi'],
+        )
+
+        data_loader = HitGraphDataLoader(
+            dataset=HitGraphDataset(
+                graphs=[graph]
+            )
+        )
+
+        model.to(device)
+
+        # Mark model for evaluations.
+        model.eval()
+
+        # Use for loop to unpack data. It actually has only one graph.
+        for batch_idx, (batch_input, batch_target) in enumerate(data_loader):
+            # Assign to device.
+            batch_input = [input_values.to(device) for input_values in batch_input]
+            batch_target = batch_target.to(device)
+
+            # Evaluate model and remove batch dimension
+            predictions = model(batch_input).squeeze().detach().cpu().numpy()
+
+            subdir = (save / f'evt{event:09}')
+
+            subdir.mkdir(parents=True, exist_ok=True)
+
+            threshold = 0.5
+
+            hit_pair_gnn_prediction_plot_2d(
+                hits=hits,
+                pairs=pairs,
+                predictions=predictions,
+                truth=graph.truth,
+                threshold=threshold,
+                line_width=0.5,
+                color_scheme=[
+                    [0, 1, 0, 1.0],
+                    [1, 0, 0, 1.0],
+                    [0, 0, 0, 0.0],
+                    [1, 1, 0, 0.0]
+                ],
+                save=subdir / 'true_false_positive.png'
+            )
+
+            hit_pair_gnn_prediction_plot_2d(
+                hits=hits,
+                pairs=pairs,
+                predictions=predictions,
+                truth=graph.truth,
+                threshold=threshold,
+                line_width=0.5,
+                color_scheme=[
+                    [0, 1, 0, 0],
+                    [1, 0, 0, 0],
+                    [0, 0, 0, 0.1],
+                    [1, 1, 0, 0.1]
+                ],
+                save=subdir / 'true_false_negative.png'
+            )
+
+            hit_pair_gnn_prediction_plot_2d(
+                hits=hits,
+                pairs=pairs,
+                predictions=predictions,
+                truth=graph.truth,
+                threshold=threshold,
+                save=subdir / 'all.png'
+            )
+
+
+def create_model(
+    node_input_dim: int = 3,
+    node_hidden_dim: int = 8,
+    edge_hidden_dim: int = 8,
+    n_iter: int = 8
+):
+    return SegmentClassifier(
+        node_input_dim=node_input_dim,
+        node_hidden_dim=node_hidden_dim,
+        edge_hidden_dim=edge_hidden_dim,
+        n_iter=n_iter
     )
 
-    data_loader = HitGraphDataLoader(
-        dataset=HitGraphDataset(
-            graphs=[graph]
+
+def load_model(name: str):
+    model = create_model()
+    model.load_state_dict(
+        torch.load(
+            f'output/models/{name}/model'
         )
     )
 
-    device = 'cpu'
+    return model
 
-    model.to(device)
 
-    # Mark model for evaluations.
-    model.eval()
+def load_checkpoint(name: str, checkpoint_idx: int):
+    model = create_model()
 
-    # Use for loop to unpack data. It actually has only one graph.
-    for batch_idx, (batch_input, batch_target) in enumerate(data_loader):
-        batch_input = [input_values.to(device) for input_values in batch_input]
-        batch_target = batch_target.to(device)
+    # Load checkpoint.
+    model.load_state_dict(
+        torch.load(
+            f'output/models/{name}/checkpoints/model_checkpoint_{checkpoint_idx:03}.pth.tar'
+        )['model']
+    )
 
-        # Evaluate model and remove batch dimension
-        predictions = model(batch_input).squeeze().detach().cpu().numpy()
-
-        save.mkdir(parents=True, exist_ok=True)
-
-        hit_pair_gnn_prediction_plot_2d(
-            hits=hits,
-            pairs=pairs,
-            predictions=predictions,
-            truth=graph.truth,
-            threshold=0.4,
-            line_width=0.5,
-            color_scheme=[
-                [0, 1, 0, 1.0],
-                [1, 0, 0, 1.0],
-                [0, 0, 0, 0.0],
-                [0, 0, 0, 0.0]
-            ],
-            save=save / 'true_false_positive.png'
-        )
-
-        hit_pair_gnn_prediction_plot_2d(
-            hits=hits,
-            pairs=pairs,
-            predictions=predictions,
-            truth=graph.truth,
-            threshold=0.4,
-            line_width=0.1,
-            color_scheme=[
-                [0, 0, 0, 0],
-                [0, 0, 0, 0],
-                [0, 0, 0, 0.1],
-                [1, 1, 0, 0.1]
-            ],
-            save=save / 'true_false_negative.png'
-        )
-
-        hit_pair_gnn_prediction_plot_2d(
-            hits=hits,
-            pairs=pairs,
-            predictions=predictions,
-            truth=graph.truth,
-            threshold=0.4,
-            save=save / 'all.png'
-        )
+    return model
 
 
 if __name__ == '__main__':
-    # Create model.
-    model = SegmentClassifier(
-        node_input_dim=3,
-        node_hidden_dim=8,
-        edge_hidden_dim=8,
-        n_iter=3
-    )
+    schemes = {
+        'iter3_20evts_3epochs_gpu_weighted(0.1)_eta': {
+            'model': {
+                'node_input_dim': 3,
+                'node_hidden_dim': 64,
+                'edge_hidden_dim': 64,
+                'n_iter': 3
+            },
+            'train': {
+                'epoch': 50,
+                'true_sample_train_weight': 1.0,
+                'false_sample_train_weight': 0.1,
+                'device': 'cpu'
+            }
+        },
+    }
 
-    # Train new model.
-    trainer = train_model(
-        model=model,
-        save=Path('output/models/iter3_10evts_5epochs')
-    )
+    for name, settings in schemes.items():
+        print(f'\n======{name}======\n')
 
-    # Load previous saved model.
-    model.load_state_dict(
-        torch.load(
-            'output/models/iter3_10evts_5epochs/model'
+        # Create model.
+        model = create_model(**(settings['model']))
+
+        # Load previous saved model.
+        # model = load_model(name)
+
+        # Load checkpoint.
+        # checkpoint_idx = 20
+        # model = load_checkpoint(name, checkpoint_idx)
+
+        # Train new model.
+        trainer = train_model(
+            model=model,
+            save=Path(f'output/models/{name}'),
+            **(settings['train'])
         )
-    )
 
-    validate(
-        model=model,
-        save=Path('output/plots/gnn/iter3_10evts_5epochs')
-    )
+        validate(
+            model=model,
+            save=Path(f'output/plots/gnn/{name}')
+        )

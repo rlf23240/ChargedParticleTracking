@@ -148,7 +148,9 @@ def hit_pair_gnn_prediction_plot_2d(
         [1, 1, 0, 1]
     ]
 
+    print('Summary:')
     for lines, color, label in zip(confusion, color_scheme, labels):
+        print(f'{label}: {len(lines)}')
         if color[3] > 0:
             line_collection = mc.LineCollection(
                 lines,
@@ -157,6 +159,7 @@ def hit_pair_gnn_prediction_plot_2d(
                 label=label
             )
             ax.add_collection(line_collection)
+    print('\n')
 
     ax.set_xlabel('x')
     ax.set_ylabel('y')

@@ -180,11 +180,20 @@ class Trainer:
             batch_input = [input_values.to(self.device) for input_values in batch_input]
             batch_target = batch_target.to(self.device)
 
+            # Compute target weights on-the-fly for loss function
+            batch_weights_real = batch_target * self.true_sample_train_weight
+            batch_weights_fake = (1 - batch_target) * self.false_sample_train_weight
+            batch_weights = batch_weights_real + batch_weights_fake
+
             # Predictions.
             batch_output = self.model(batch_input)
 
             # Evaluate loss.
-            loss = self.loss(batch_output, batch_target).item()
+            loss = self.loss(
+                batch_output,
+                batch_target,
+                weight=batch_weights
+            ).item()
             valid_loss += loss
 
             # Count number of correct predictions

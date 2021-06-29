@@ -2,6 +2,7 @@
 Data
 # Large output
 examples/output/pairs
+examples/output/models
 # Run logs.
 logs
 
